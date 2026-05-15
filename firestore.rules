@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // -------------------------------------------------------------------------
+    // GLOBAL HELPERS
+    // -------------------------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    // -------------------------------------------------------------------------
+    // VALIDATION HELPERS
+    // -------------------------------------------------------------------------
+    
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'fullName', 'role']) &&
+             data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 256 &&
+             data.fullName is string && data.fullName.size() <= 128 &&
+             data.role in ['candidate', 'recruiter', 'admin'];
+    }
+
+    function isValidJob(data) {
+      return data.keys().hasAll(['recruiterId', 'title', 'description', 'category', 'type', 'location', 'status', 'companyName']) &&
+             data.recruiterId == request.auth.uid &&
+             data.title is string && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 10000 &&
+             data.status in ['active', 'closed', 'draft'];
+    }
+
+    function isValidApplication(data) {
+      return data.keys().hasAll(['jobId', 'candidateId', 'recruiterId', 'status', 'appliedAt', 'candidateName', 'resumeUrl', 'coverLetter']) &&
+             data.candidateId == request.auth.uid &&
+             data.status == 'pending' &&
+             data.resumeUrl is string;
+    }
+
+    // -------------------------------------------------------------------------
+    // DEFAULT DENY
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // ENTITY RULES
+    // -------------------------------------------------------------------------
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming());
+    }
+
+    match /recruiters/{recruiterId} {
+      allow read: if true;
+      allow create: if isOwner(recruiterId);
+      allow update: if isOwner(recruiterId);
+    }
+
+    match /jobs/{jobId} {
+      allow get, list: if true;
+      allow create: if isSignedIn() && isValidJob(incoming());
+      allow update: if isOwner(existing().recruiterId) && isValidJob(incoming());
+      allow delete: if isOwner(existing().recruiterId);
+    }
+
+    match /applications/{applicationId} {
+      allow get: if isSignedIn() && (isOwner(existing().candidateId) || isOwner(existing().recruiterId));
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidApplication(incoming());
+      allow update: if isSignedIn() && (
+        (isOwner(existing().recruiterId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+      );
+    }
+
+    match /notifications/{notificationId} {
+      allow read, delete: if isOwner(existing().userId);
+      allow update: if isOwner(existing().userId) && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+    }
+  }
+}

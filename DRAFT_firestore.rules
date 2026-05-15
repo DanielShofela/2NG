@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // -------------------------------------------------------------------------
+    // GLOBAL HELPERS
+    // -------------------------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    
+    // Auth token doesn't have custom claims by default, we use DB lookups if needed.
+    // However, to keep rules performant, we'll use relational checks where possible.
+    
+    // -------------------------------------------------------------------------
+    // VALIDATION HELPERS
+    // -------------------------------------------------------------------------
+    
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'fullName', 'role']) &&
+             data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 256 &&
+             data.fullName is string && data.fullName.size() <= 128 &&
+             data.role in ['candidate', 'recruiter', 'admin'] &&
+             (data.get('bio', '') is string && data.bio.size() <= 2000);
+    }
+
+    function isValidJob(data) {
+      return data.keys().hasAll(['recruiterId', 'title', 'description', 'category', 'type', 'location', 'status']) &&
+             data.recruiterId == request.auth.uid &&
+             data.title is string && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 10000 &&
+             data.category is string &&
+             data.type in ['CDI', 'CDD', 'Stage', 'Freelance', 'Contract', 'Remote'] &&
+             data.status in ['active', 'closed', 'draft'];
+    }
+
+    function isValidApplication(data) {
+      return data.keys().hasAll(['jobId', 'candidateId', 'recruiterId', 'status', 'appliedAt']) &&
+             data.candidateId == request.auth.uid &&
+             data.status == 'pending' &&
+             data.resumeUrl is string && data.resumeUrl.size() <= 1000;
+    }
+
+    // -------------------------------------------------------------------------
+    // DEFAULT DENY
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // ENTITY RULES
+    // -------------------------------------------------------------------------
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if false; // No blanket listing of users
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'bio', 'profilePic', 'phoneNumber', 'resumeUrl', 'companyName']);
+    }
+
+    match /recruiters/{recruiterId} {
+      allow read: if true; // Public profiles
+      allow create: if isOwner(recruiterId);
+      allow update: if isOwner(recruiterId) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['companyName', 'logoUrl', 'description', 'website', 'industry', 'location']);
+    }
+
+    match /jobs/{jobId} {
+      allow get: if true;
+      allow list: if true; // Public listings allowed, clients should filter by status == 'active'
+      allow create: if isSignedIn() && isValidJob(incoming());
+      allow update: if isOwner(existing().recruiterId) && isValidJob(incoming()) &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'type', 'location', 'salary', 'requirements', 'status']);
+      allow delete: if isOwner(existing().recruiterId);
+    }
+
+    match /applications/{applicationId} {
+      allow get: if isSignedIn() && (isOwner(existing().candidateId) || isOwner(existing().recruiterId));
+      allow list: if isSignedIn(); // Queries must be scoped to candidateId or recruiterId
+      allow create: if isSignedIn() && isValidApplication(incoming());
+      allow update: if isSignedIn() && (
+        // Candidate can only update specific fields (e.g. withdraw) ? 
+        // For now, let's say only Recruiter can update status
+        (isOwner(existing().recruiterId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+      );
+    }
+
+    match /notifications/{notificationId} {
+      allow read, delete: if isOwner(existing().userId);
+      allow create: if false; // System only? Or specific logic
+      allow update: if isOwner(existing().userId) && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+    }
+  }
+}

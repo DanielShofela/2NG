@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Base user profile for candidates and recruiters",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "fullName": { "type": "string" },
+        "role": { "type": "string", "enum": ["candidate", "recruiter", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "profilePic": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "bio": { "type": "string" },
+        "resumeUrl": { "type": "string" },
+        "companyName": { "type": "string" }
+      },
+      "required": ["uid", "email", "fullName", "role"]
+    },
+    "Recruiter": {
+      "title": "Recruiter Profile",
+      "description": "Detailed recruiter/company information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "companyName": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "website": { "type": "string", "format": "uri" },
+        "industry": { "type": "string" },
+        "location": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "verified", "suspended"] }
+      },
+      "required": ["uid", "companyName"]
+    },
+    "Job": {
+      "title": "Job Posting",
+      "description": "Job advertisement details",
+      "type": "object",
+      "properties": {
+        "recruiterId": { "type": "string" },
+        "companyName": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "type": { "type": "string", "enum": ["full-time", "part-time", "contract", "remote"] },
+        "location": { "type": "string" },
+        "salary": { "type": "string" },
+        "requirements": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["active", "closed", "draft"] }
+      },
+      "required": ["recruiterId", "title", "description", "category", "type", "location", "status"]
+    },
+    "Application": {
+      "title": "Job Application",
+      "description": "Candidate application for a specific job",
+      "type": "object",
+      "properties": {
+        "jobId": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "candidateName": { "type": "string" },
+        "recruiterId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "shortlisted", "rejected", "hired"] },
+        "appliedAt": { "type": "string", "format": "date-time" },
+        "resumeUrl": { "type": "string" },
+        "coverLetter": { "type": "string" }
+      },
+      "required": ["jobId", "candidateId", "recruiterId", "status", "appliedAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System or user notifications",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["application_update", "new_job", "system"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "type", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/recruiters/{recruiterId}": {
+      "schema": "Recruiter",
+      "description": "Company profiles"
+    },
+    "/jobs/{jobId}": {
+      "schema": "Job",
+      "description": "Job postings"
+    },
+    "/applications/{applicationId}": {
+      "schema": "Application",
+      "description": "Job applications"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications"
+    }
+  }
+}
